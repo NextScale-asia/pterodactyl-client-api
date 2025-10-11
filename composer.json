@@ -1,5 +1,5 @@
 {
-    "name": "byzic/pterodactyl-client-api",
+    "name": "NextScale-asia/Panel-Client-API",
     "description": "This package provides Application API endpoints for managing user API keys and free allocations in Pterodactyl Panel",
     "keywords": [
         "pterodactyl",
