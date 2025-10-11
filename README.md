@@ -30,7 +30,7 @@ This package provides Application API endpoints for managing user API keys and f
 
 ## Installation
 
-You can install the package via composer:
+You can install the package via composer: `composer require nextscale-asia/pterodactyl-client-api`
 
 The service provider will be automatically registered. You can publish the config file with:
 
