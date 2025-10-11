@@ -1,7 +1,7 @@
 # Pterodactyl Client API
 
-[![Latest Version on Packagist](https://img.shields.io/packagist/v/byzic/pterodactyl-client-api.svg?style=flat-square)](https://packagist.org/packages/byzic/pterodactyl-client-api)
-[![Total Downloads](https://img.shields.io/packagist/dt/byzic/pterodactyl-client-api.svg?style=flat-square)](https://packagist.org/packages/byzic/pterodactyl-client-api)
+[![Latest Version on Packagist](https://img.shields.io/packagist/v/nextscale-asia/pterodactyl-client-api.svg?style=flat-square)](https://packagist.org/packages/byzic/pterodactyl-client-api)
+[![Total Downloads](https://img.shields.io/packagist/dt/nextscale-asia/pterodactyl-client-api.svg?style=flat-square)](https://packagist.org/packages/byzic/pterodactyl-client-api)
 
 This package provides Application API endpoints for managing user API keys and free allocations in Pterodactyl Panel.
 
