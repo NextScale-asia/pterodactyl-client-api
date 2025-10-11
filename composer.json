@@ -1,5 +1,5 @@
 {
-    "name": "NextScale-asia/Panel-Client-API",
+    "name": "NextScale-asia/pterodactyl-client-api",
     "description": "This package provides Application API endpoints for managing user API keys and free allocations in Pterodactyl Panel",
     "keywords": [
         "pterodactyl",
