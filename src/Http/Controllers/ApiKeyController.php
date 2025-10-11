@@ -1,11 +1,11 @@
 <?php
 
-namespace Xepare\PterodactylApiAddon\Http\Controllers;
+namespace Byzic\PterodactylClientApi\Http\Controllers;
 
 use Pterodactyl\Http\Controllers\Api\Application\ApplicationApiController;
-use Xepare\PterodactylApiAddon\Http\Requests\GetUsersApiKeysRequest;
-use Xepare\PterodactylApiAddon\Http\Requests\StoreUserApiKeyRequest;
-use Xepare\PterodactylApiAddon\Http\Requests\DeleteUserApiKeyRequest;
+use Byzic\PterodactylClientApi\Http\Requests\GetUsersApiKeysRequest;
+use Byzic\PterodactylClientApi\Http\Requests\StoreUserApiKeyRequest;
+use Byzic\PterodactylClientApi\Http\Requests\DeleteUserApiKeyRequest;
 use Pterodactyl\Models\ApiKey;
 use Pterodactyl\Models\User;
 use Pterodactyl\Models\AuditLog;

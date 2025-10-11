@@ -1,18 +1,20 @@
 {
-    "name": "rene-roscher/pterodactyl-api-addon",
-    "description": "This package provides Application API endpoints for managing user API keys in Pterodactyl Panel",
+    "name": "byzic/pterodactyl-client-api",
+    "description": "This package provides Application API endpoints for managing user API keys and free allocations in Pterodactyl Panel",
     "keywords": [
-        "PterodactylApiAddon",
+        "pterodactyl",
         "laravel",
-        "pterodactyl-api-addon",
-        "api-key-management"
+        "api-addon",
+        "api-key-management",
+        "client-api",
+        "free-allocation"
     ],
-    "homepage": "https://github.com/pterodactylapiaddon/pterodactyl-api-addon",
+    "homepage": "https://github.com/NextScale-asia/Panel-Client-API",
     "license": "MIT",
     "authors": [
         {
-            "name": "Rene Roscher",
-            "email": "roscher794@gmail.com",
+            "name": "Byzic",
+            "email": "byzic@example.com",
             "role": "Developer"
         }
     ],
@@ -22,7 +24,7 @@
     },
     "autoload": {
         "psr-4": {
-            "Xepare\\PterodactylApiAddon\\": "src"
+            "Byzic\\PterodactylClientApi\\": "src"
         }
     },
     "config": {
@@ -32,7 +34,7 @@
     "extra": {
         "laravel": {
             "providers": [
-                "Xepare\\PterodactylApiAddon\\PterodactylApiAddonServiceProvider"
+                "Byzic\\PterodactylClientApi\\PterodactylApiAddonServiceProvider"
             ]
         }
     },

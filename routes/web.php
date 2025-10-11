@@ -1,9 +1,9 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use Xepare\PterodactylApiAddon\Http\Controllers\ApiKeyController;
-use Xepare\PterodactylApiAddon\Http\Controllers\FreeAllocationController;
-use Xepare\PterodactylApiAddon\Http\Middleware\ValidateUserOwnership;
+use Byzic\PterodactylClientApi\Http\Controllers\ApiKeyController;
+use Byzic\PterodactylClientApi\Http\Controllers\FreeAllocationController;
+use Byzic\PterodactylClientApi\Http\Middleware\ValidateUserOwnership;
 
 Route::prefix('/api/application')->middleware(['api', 'throttle:api.application'])->group(function () {
 

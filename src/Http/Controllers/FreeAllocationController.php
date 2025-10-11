@@ -1,6 +1,6 @@
 <?php
 
-namespace Xepare\PterodactylApiAddon\Http\Controllers;
+namespace Byzic\PterodactylClientApi\Http\Controllers;
 
 use Pterodactyl\Models\Node;
 use Pterodactyl\Transformers\Api\Application\AllocationTransformer;

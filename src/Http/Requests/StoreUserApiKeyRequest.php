@@ -1,6 +1,6 @@
 <?php
 
-namespace Xepare\PterodactylApiAddon\Http\Requests;
+namespace Byzic\PterodactylClientApi\Http\Requests;
 
 use Pterodactyl\Http\Requests\Api\Application\ApplicationApiRequest;
 use Pterodactyl\Services\Acl\Api\AdminAcl as Acl;

@@ -1,6 +1,6 @@
 <?php
 
-namespace Xepare\PterodactylApiAddon\Http\Middleware;
+namespace Byzic\PterodactylClientApi\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
