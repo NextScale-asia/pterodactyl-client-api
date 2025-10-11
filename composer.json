@@ -1,10 +1,11 @@
 {
     "name": "rene-roscher/pterodactyl-api-addon",
-    "description": "This package brings an API interface to the application API in order to be able to create API tokens for a user",
+    "description": "This package provides Application API endpoints for managing user API keys in Pterodactyl Panel",
     "keywords": [
         "PterodactylApiAddon",
         "laravel",
-        "pterodactyl-api-addon"
+        "pterodactyl-api-addon",
+        "api-key-management"
     ],
     "homepage": "https://github.com/pterodactylapiaddon/pterodactyl-api-addon",
     "license": "MIT",
@@ -16,7 +17,8 @@
         }
     ],
     "require": {
-        "php": "^8.0|^8.1|^8.2|^8.3"
+        "php": "^8.0|^8.1|^8.2|^8.3",
+        "laravel/framework": "^9.0|^10.0|^11.0"
     },
     "autoload": {
         "psr-4": {
@@ -24,7 +26,8 @@
         }
     },
     "config": {
-        "sort-packages": true
+        "sort-packages": true,
+        "optimize-autoloader": true
     },
     "extra": {
         "laravel": {
