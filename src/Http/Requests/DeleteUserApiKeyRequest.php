@@ -2,50 +2,15 @@
 
 namespace Byzic\PterodactylClientApi\Http\Requests;
 
-use Pterodactyl\Http\Requests\Api\Application\ApplicationApiRequest;
-use Pterodactyl\Services\Acl\Api\AdminAcl as Acl;
+use Pterodactyl\Services\Acl\Api\AdminAcl;
 
 /**
- * Class DeleteUserApiKeyRequest
- * 
- * Request for deleting user API keys via Application API.
- * Requires DELETE permission on USERS resource.
+ * The user and identifier are route parameters: the user is resolved by route-model
+ * binding and the identifier is constrained by the route pattern, so there are no
+ * body rules here.
  */
-class DeleteUserApiKeyRequest extends ApplicationApiRequest
+class DeleteUserApiKeyRequest extends UserApiKeyRequest
 {
-    /**
-     * @var string
-     */
-    protected ?string $resource = Acl::RESOURCE_USERS;
-
-    /**
-     * @var int
-     */
-    protected int $permission = Acl::DELETE;
-
-    /**
-     * Validation rules for the route parameters.
-     *
-     * @return array
-     */
-    public function rules(): array
-    {
-        return [
-            'user' => 'required|integer|exists:users,id',
-            'identifier' => 'required|string|size:16',
-        ];
-    }
-
-    /**
-     * Custom error messages.
-     *
-     * @return array
-     */
-    public function messages(): array
-    {
-        return [
-            'user.exists' => 'The specified user does not exist.',
-            'identifier.size' => 'The API key identifier must be exactly 16 characters.',
-        ];
-    }
+    // AdminAcl has no DELETE level; the panel's own DeleteUserRequest uses WRITE too.
+    protected int $permission = AdminAcl::WRITE;
 }

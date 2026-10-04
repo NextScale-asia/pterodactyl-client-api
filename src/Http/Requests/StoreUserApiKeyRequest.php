@@ -2,57 +2,52 @@
 
 namespace Byzic\PterodactylClientApi\Http\Requests;
 
-use Pterodactyl\Http\Requests\Api\Application\ApplicationApiRequest;
-use Pterodactyl\Services\Acl\Api\AdminAcl as Acl;
+use IPTools\Range;
+use Pterodactyl\Models\ApiKey;
+use Illuminate\Validation\Validator;
+use Pterodactyl\Services\Acl\Api\AdminAcl;
 
-class StoreUserApiKeyRequest extends ApplicationApiRequest
+/**
+ * Mirrors the panel's Client\Account\StoreApiKeyRequest so keys created here are
+ * validated exactly like keys a user creates from their own account page.
+ */
+class StoreUserApiKeyRequest extends UserApiKeyRequest
 {
-    /**
-     * @var string
-     */
-    protected ?string $resource = Acl::RESOURCE_USERS;
+    protected int $permission = AdminAcl::WRITE;
 
-    /**
-     * @var int
-     */
-    protected int $permission = Acl::WRITE;
-
-    /**
-     * Validation rules for creating API key.
-     *
-     * @return array
-     */
     public function rules(): array
     {
-        $userId = $this->route('user');
-        
+        $rules = ApiKey::getRules();
+
         return [
-            'description' => [
-                'required',
-                'string',
-                'min:1',
-                'max:100',
-                // Kiểm tra unique description per user
-                'unique:api_keys,memo,NULL,id,user_id,' . $userId . ',key_type,' . \Pterodactyl\Models\ApiKey::TYPE_ACCOUNT
-            ],
-            'allowed_ips' => 'sometimes|nullable|array|max:10',
-            'allowed_ips.*' => 'ip',
+            'description' => $rules['memo'],
+            'allowed_ips' => [...$rules['allowed_ips'], 'max:50'],
+            'allowed_ips.*' => 'string',
         ];
     }
 
     /**
-     * Custom error messages.
-     *
-     * @return array
+     * Check that each allowed IP is a valid address or CIDR range.
      */
-    public function messages(): array
+    public function withValidator(Validator $validator): void
     {
-        return [
-            'description.required' => 'A description for this API key is required.',
-            'description.unique' => 'You already have an API key with this description.',
-            'description.max' => 'API key description cannot exceed 100 characters.',
-            'allowed_ips.max' => 'You cannot specify more than 10 allowed IP addresses.',
-            'allowed_ips.*.ip' => 'Each allowed IP must be a valid IP address.',
-        ];
+        $validator->after(function (Validator $validator) {
+            if (!is_array($ips = $this->input('allowed_ips'))) {
+                return;
+            }
+
+            foreach ($ips as $index => $ip) {
+                $valid = false;
+                try {
+                    $valid = Range::parse($ip)->valid();
+                } catch (\Exception $exception) {
+                    if ($exception->getMessage() !== 'Invalid IP address format') {
+                        throw $exception;
+                    }
+                } finally {
+                    $validator->errors()->addIf(!$valid, "allowed_ips.{$index}", '"' . $ip . '" is not a valid IP address or CIDR range.');
+                }
+            }
+        });
     }
 }

@@ -2,136 +2,80 @@
 
 namespace Byzic\PterodactylClientApi\Http\Controllers;
 
+use Pterodactyl\Models\User;
+use Illuminate\Http\JsonResponse;
+use Pterodactyl\Facades\Activity;
+use Illuminate\Support\Facades\DB;
+use Pterodactyl\Exceptions\DisplayException;
+use Pterodactyl\Transformers\Api\Client\ApiKeyTransformer;
 use Pterodactyl\Http\Controllers\Api\Application\ApplicationApiController;
 use Byzic\PterodactylClientApi\Http\Requests\GetUsersApiKeysRequest;
 use Byzic\PterodactylClientApi\Http\Requests\StoreUserApiKeyRequest;
 use Byzic\PterodactylClientApi\Http\Requests\DeleteUserApiKeyRequest;
-use Pterodactyl\Models\ApiKey;
-use Pterodactyl\Models\User;
-use Pterodactyl\Models\AuditLog;
-use Pterodactyl\Transformers\Api\Application\ApiKeyTransformer;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Str;
-use Pterodactyl\Exceptions\Http\HttpForbiddenException;
 
+/**
+ * Lets an Application API key manage another user's account (ptlc_) API keys.
+ * Behaves like the panel's Client\ApiKeyController, but for the user in the route.
+ */
 class ApiKeyController extends ApplicationApiController
 {
     /**
-     * Maximum number of API keys per user.
+     * Returns all the account API keys that exist for the given user.
      */
-    private const MAX_KEYS_PER_USER = 5;
-
-    /**
-     * Returns all of the API keys that exist for the given user.
-     *
-     * @return array
-     */
-    public function index(GetUsersApiKeysRequest $request, int $userId): array
+    public function index(GetUsersApiKeysRequest $request, User $user): array
     {
-        $user = User::findOrFail($userId);
-        
-        // Audit log for viewing API keys
-        activity()
-            ->causedBy($request->user())
-            ->performedOn($user)
-            ->withProperties(['user_id' => $user->id])
-            ->log('Viewed API keys for user');
-
-        $apiKeys = $user->apiKeys()
-            ->where('key_type', ApiKey::TYPE_ACCOUNT)
-            ->get();
-
-        return $this->fractal->collection($apiKeys)
+        return $this->fractal->collection($user->apiKeys)
             ->transformWith($this->getTransformer(ApiKeyTransformer::class))
             ->toArray();
     }
 
     /**
-     * Store a new API key for a user's account.
+     * Store a new account API key for the given user.
      *
-     * @return array
+     * The secret is returned once in meta.secret_token; the full key is
+     * attributes.identifier followed by meta.secret_token.
      *
-     * @throws \Pterodactyl\Exceptions\Http\HttpForbiddenException
+     * @throws DisplayException
      */
-    public function store(StoreUserApiKeyRequest $request, int $userId): array
+    public function store(StoreUserApiKeyRequest $request, User $user): array
     {
-        $user = User::findOrFail($userId);
+        $max = (int) config('pterodactyl-client-api.api_key.max_keys_per_user', 5);
 
-        // Check if user has reached maximum API keys limit
-        $currentKeyCount = $user->apiKeys()
-            ->where('key_type', ApiKey::TYPE_ACCOUNT)
-            ->count();
+        $token = DB::transaction(function () use ($request, $user, $max) {
+            if ($user->apiKeys()->lockForUpdate()->count() >= $max) {
+                throw new DisplayException("This user has reached the limit of {$max} API keys.");
+            }
 
-        if ($currentKeyCount >= self::MAX_KEYS_PER_USER) {
-            throw new HttpForbiddenException('You have reached the maximum number of API keys (' . self::MAX_KEYS_PER_USER . ').');
-        }
+            return $user->createToken(
+                $request->input('description'),
+                $request->input('allowed_ips')
+            );
+        });
 
-        // Generate secure API key
-        $identifier = Str::random(16);
-        $token = Str::random(48);
+        Activity::event('user:api-key.create')
+            ->subject($user, $token->accessToken)
+            ->property('identifier', $token->accessToken->identifier)
+            ->log();
 
-        $apiKey = ApiKey::create([
-            'user_id' => $user->id,
-            'key_type' => ApiKey::TYPE_ACCOUNT,
-            'identifier' => $identifier,
-            'token' => hash('sha256', $token),
-            'allowed_ips' => $request->input('allowed_ips') ?: null,
-            'memo' => $request->input('description'),
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-
-        // Audit log for API key creation
-        activity()
-            ->causedBy($request->user())
-            ->performedOn($user)
-            ->withProperties([
-                'user_id' => $user->id,
-                'api_key_id' => $apiKey->id,
-                'identifier' => $identifier,
-                'memo' => $request->input('description'),
-                'allowed_ips' => $request->input('allowed_ips'),
-            ])
-            ->log('Created API key for user');
-
-        return $this->fractal->item($apiKey)
+        return $this->fractal->item($token->accessToken)
             ->transformWith($this->getTransformer(ApiKeyTransformer::class))
-            ->addMeta([
-                'secret_token' => $identifier . $token
-            ])
+            ->addMeta(['secret_token' => $token->plainTextToken])
             ->toArray();
     }
 
     /**
-     * Deletes a given API key.
-     *
-     * @return \Illuminate\Http\JsonResponse
+     * Deletes one of the given user's account API keys.
      */
-    public function delete(DeleteUserApiKeyRequest $request, int $userId, string $identifier): JsonResponse
+    public function delete(DeleteUserApiKeyRequest $request, User $user, string $identifier): JsonResponse
     {
-        $user = User::findOrFail($userId);
-        
-        $apiKey = $user->apiKeys()
-            ->where('key_type', ApiKey::TYPE_ACCOUNT)
-            ->where('identifier', $identifier)
-            ->firstOrFail();
+        $key = $user->apiKeys()->where('identifier', $identifier)->firstOrFail();
 
-        // Store key info for audit log before deletion
-        $keyInfo = [
-            'user_id' => $user->id,
-            'api_key_id' => $apiKey->id,
-            'identifier' => $identifier,
-            'memo' => $apiKey->memo,
-        ];
+        Activity::event('user:api-key.delete')
+            ->subject($user)
+            ->property('identifier', $key->identifier)
+            ->log();
 
-        $apiKey->delete();
-
-        // Audit log for API key deletion
-        activity()
-            ->causedBy($request->user())
-            ->performedOn($user)
-            ->withProperties($keyInfo)
-            ->log('Deleted API key for user');
+        $key->delete();
 
         return new JsonResponse([], JsonResponse::HTTP_NO_CONTENT);
     }

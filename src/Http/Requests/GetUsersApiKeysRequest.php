@@ -2,36 +2,9 @@
 
 namespace Byzic\PterodactylClientApi\Http\Requests;
 
-use Pterodactyl\Http\Requests\Api\Application\ApplicationApiRequest;
-use Pterodactyl\Services\Acl\Api\AdminAcl as Acl;
+use Pterodactyl\Services\Acl\Api\AdminAcl;
 
-/**
- * Class GetUsersApiKeysRequest
- * 
- * Request for retrieving user API keys via Application API.
- * Requires READ permission on USERS resource.
- */
-class GetUsersApiKeysRequest extends ApplicationApiRequest
+class GetUsersApiKeysRequest extends UserApiKeyRequest
 {
-    /**
-     * @var string
-     */
-    protected ?string $resource = Acl::RESOURCE_USERS;
-
-    /**
-     * @var int
-     */
-    protected int $permission = Acl::READ;
-
-    /**
-     * Rules for query parameters.
-     *
-     * @return array
-     */
-    public function rules(): array
-    {
-        return [
-            'per_page' => 'sometimes|integer|min:1|max:100',
-        ];
-    }
+    protected int $permission = AdminAcl::READ;
 }
