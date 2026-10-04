@@ -24,14 +24,89 @@ Mọi endpoint đều dùng lại các hàm có sẵn của panel: `User::create
 Chạy trong thư mục panel (ví dụ `/var/www/pterodactyl`):
 
 ```bash
-composer require nextscale-asia/pterodactyl-client-api:^2.1
+cd /var/www/pterodactyl
+cp composer.json composer.json.bak && cp composer.lock composer.lock.bak
+
+COMPOSER_ALLOW_SUPERUSER=1 composer require nextscale-asia/pterodactyl-client-api:^2.1 \
+  --update-no-dev --optimize-autoloader
 php artisan optimize:clear
-php artisan route:list --path=api-keys   # phải thấy 3 route api-keys
+chown -R www-data:www-data /var/www/pterodactyl/*   # user của nginx/apache/caddy
+
+php artisan route:list --path=api-keys | grep application   # phải thấy 3 route của addon
 ```
+
+- **Phải có `--update-no-dev`** trên panel production; nếu không, `composer require` cài thêm cả dev dependency của panel (PHPUnit…) vào `vendor/`.
+- Rollback: khôi phục `composer.json.bak` / `composer.lock.bak`, chạy `composer install --no-dev --optimize-autoloader` và `php artisan optimize:clear`.
 
 - Panel 1.13 / 1.14 (Laravel 11): chạy `composer require` như trên, **không** thêm `-W` / `--with-all-dependencies`. Composer hiện chặn mọi bản Laravel 11 vì security advisory, nên resolve lại `laravel/framework` sẽ lỗi; `require` thường giữ nguyên bản Laravel panel đã khoá.
 - Service provider tự đăng ký qua `extra.laravel.providers`. `boot()` nạp `routes/api.php`, `register()` merge config vào key `pterodactyl-client-api`.
 - ⚠️ **Nâng cấp panel sẽ gỡ mất addon.** Quy trình nâng cấp chuẩn của Pterodactyl giải nén bản mới đè lên thư mục panel (ghi đè `composer.json`) rồi chạy `composer install`. Sau mỗi lần nâng cấp panel phải chạy lại `composer require`, hoặc đưa bước này vào image/script nâng cấp.
+
+### 1.1 Gỡ bản cũ và cài lại
+
+Các bản trước từng được phát hành dưới nhiều tên package, và tag duy nhất trước 2.1.0 (`v1.0.0`) chứa code lỗi của 2.0.0. Cách làm: gỡ bản đang cài rồi cài 2.1.
+
+**Bước 1: tìm bản đang cài** (trong thư mục panel):
+
+```bash
+composer show | grep -i -E "pterodactyl-api-addon|pterodactyl-client-api|panel-client-api"
+grep -n -i -E "api-addon|client-api" composer.json          # mục require + repositories
+composer config repositories                                 # repository kiểu path / vcs
+grep -rn "PterodactylApiAddonServiceProvider" config/ bootstrap/ 2>/dev/null   # đăng ký thủ công
+ls config/pterodactyl-client-api.php 2>/dev/null             # config đã publish
+```
+
+Các tên đã dùng: `rene-roscher/pterodactyl-api-addon` (1.x và 2.0.0 đầu tiên), `byzic/pterodactyl-client-api`, `NextScale-asia/Panel-Client-API`, `nextscale-asia/pterodactyl-client-api`.
+
+**Bước 2: gỡ**
+
+```bash
+cp composer.json composer.json.bak && cp composer.lock composer.lock.bak
+
+# dùng đúng tên mà `composer show` in ra ở bước 1
+COMPOSER_ALLOW_SUPERUSER=1 composer remove rene-roscher/pterodactyl-api-addon --update-no-dev
+
+# chỉ khi `composer config repositories` có mục path/vcs trỏ tới addon
+composer config --unset repositories.<tên>
+
+rm -f config/pterodactyl-client-api.php
+php artisan optimize:clear
+php artisan route:list --path=api-keys | grep application   # phải không còn dòng nào
+```
+
+- Nếu bước 1 tìm thấy `PterodactylApiAddonServiceProvider` trong `config/app.php` hoặc `bootstrap/providers.php` (cài tay, không qua Composer), thì xoá dòng đó và thư mục code đã chép vào, thay vì chạy `composer remove`.
+- **Phải xoá config đã publish:** Laravel chỉ merge config package một cấp, nên khối `api_key` cũ sẽ thay toàn bộ khối mới (với file của 2.0.0, giới hạn key âm thầm thành 10 thay vì 5).
+- Nếu đang dùng đúng tên `nextscale-asia/pterodactyl-client-api` thì có thể bỏ qua bước gỡ, chạy thẳng lệnh cài: Composer nâng cấp tại chỗ. Vẫn phải xoá config cũ.
+
+**Bước 3: cài 2.1** bằng lệnh ở đầu mục 1.
+
+**Sau khi gỡ 1.x:** bản 1.x không kiểm tra quyền khi tạo key (user bất kỳ tạo được key cho user khác, kể cả admin). Rà key của admin:
+
+```sql
+SELECT k.identifier, u.username, k.memo, k.created_at, k.last_used_at
+FROM api_keys k JOIN users u ON u.id = k.user_id
+WHERE k.key_type = 1 AND u.root_admin = 1 ORDER BY k.created_at DESC;
+```
+
+Key do 1.x tạo là key chuẩn của panel và vẫn dùng được. Bản 2.0.0 chưa từng tạo được key nào nên không có gì phải dọn.
+
+### 1.2 Panel chạy bằng Docker (image chính thức)
+
+Trong image `ghcr.io/pterodactyl/panel`, panel nằm ở `/app`; chỉ `/app/var`, log, cấu hình nginx và chứng chỉ là volume. `vendor/` và `config/` nằm trong image, nên:
+
+- **Gỡ:** package cài bằng `docker compose exec panel composer require …` sẽ mất khi tạo lại container: `docker compose up -d --force-recreate panel`.
+- **Cài:** `composer require` trong container đang chạy sẽ mất khi tạo lại container hoặc đổi image. Phải build image riêng:
+
+```dockerfile
+FROM ghcr.io/pterodactyl/panel:v1.15.1
+# Giống các bước composer install trong image gốc.
+RUN cp .env.example .env \
+ && composer require nextscale-asia/pterodactyl-client-api:^2.1 --update-no-dev --optimize-autoloader \
+ && rm -rf .env bootstrap/cache/*.php \
+ && chown -R nginx:nginx .
+```
+
+Sau đó trỏ `image:` (hoặc `build:`) trong `docker-compose.yml` sang image này và chạy `docker compose up -d panel`. Mỗi lần đổi phiên bản panel phải build lại.
 
 ## 2. Xác thực và phân quyền
 

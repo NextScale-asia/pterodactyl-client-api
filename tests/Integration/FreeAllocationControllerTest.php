@@ -38,6 +38,24 @@ class FreeAllocationControllerTest extends ApplicationApiIntegrationTestCase
         $this->assertNotContains($server->allocation_id, collect($response->json('data'))->pluck('attributes.id'));
     }
 
+    /**
+     * The README points to this native panel filter as an alternative.
+     */
+    public function testNativeServerIdFilterReturnsTheSameAllocations(): void
+    {
+        $server = $this->createServerModel();
+        $free = Allocation::factory()->times(2)->create(['node_id' => $server->node_id]);
+
+        $response = $this->getJson("/api/application/nodes/{$server->node_id}/allocations?filter[server_id]=false")
+            ->assertOk()
+            ->assertJsonCount(2, 'data');
+
+        $this->assertEqualsCanonicalizing(
+            $free->pluck('id')->all(),
+            collect($response->json('data'))->pluck('attributes.id')->all()
+        );
+    }
+
     public function testPerPageIsValidated(): void
     {
         $server = $this->createServerModel();

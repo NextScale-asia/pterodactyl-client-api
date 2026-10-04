@@ -27,15 +27,25 @@ identical to keys a user creates from their account page.
 
 ## Installation
 
-From the panel directory (e.g. `/var/www/pterodactyl`):
+From the panel directory (e.g. `/var/www/pterodactyl`), as for a panel upgrade:
 
 ```bash
-composer require nextscale-asia/pterodactyl-client-api:^2.1
+cd /var/www/pterodactyl
+cp composer.json composer.json.bak && cp composer.lock composer.lock.bak
+
+COMPOSER_ALLOW_SUPERUSER=1 composer require nextscale-asia/pterodactyl-client-api:^2.1 \
+  --update-no-dev --optimize-autoloader
 php artisan optimize:clear
-php artisan route:list --path=api-keys   # should list the three api-keys routes
+chown -R www-data:www-data /var/www/pterodactyl/*   # nginx/apache/caddy user on your system
+
+php artisan route:list --path=api-keys | grep application   # the three routes of this package
 ```
 
-The service provider is auto-discovered.
+- `--update-no-dev` matters on a production panel: a plain `composer require` also installs the
+  panel's dev dependencies (PHPUnit and friends) into `vendor/`.
+- The service provider is auto-discovered.
+- Rollback: restore `composer.json.bak` / `composer.lock.bak`, then
+  `composer install --no-dev --optimize-autoloader` and `php artisan optimize:clear`.
 
 **Panel 1.13 / 1.14 (Laravel 11):** use a plain `composer require` as above, **without**
 `-W` / `--with-all-dependencies`. Current Composer releases block every Laravel 11 version
@@ -46,14 +56,98 @@ the panel's locked Laravel version.
 silently removes this package. Re-run `composer require` after every panel upgrade (or bake it
 into your panel image).
 
+### Upgrading or removing an older install
+
+Earlier releases were published under several package names, and the only tag before 2.1.0
+(`v1.0.0`) contains the broken 2.0.0 code. Remove whatever is installed, then install 2.1.
+
+**1. Find what is installed** (from the panel directory):
+
+```bash
+composer show | grep -i -E "pterodactyl-api-addon|pterodactyl-client-api|panel-client-api"
+grep -n -i -E "api-addon|client-api" composer.json          # require + repositories entries
+composer config repositories                                 # path / vcs repositories
+grep -rn "PterodactylApiAddonServiceProvider" config/ bootstrap/ 2>/dev/null   # manual registration
+ls config/pterodactyl-client-api.php 2>/dev/null             # published config
+```
+
+Names used so far: `rene-roscher/pterodactyl-api-addon` (1.x and the first 2.0.0),
+`byzic/pterodactyl-client-api`, `NextScale-asia/Panel-Client-API`,
+`nextscale-asia/pterodactyl-client-api`.
+
+**2. Remove it:**
+
+```bash
+cp composer.json composer.json.bak && cp composer.lock composer.lock.bak
+
+# the name printed by `composer show` above
+COMPOSER_ALLOW_SUPERUSER=1 composer remove rene-roscher/pterodactyl-api-addon --update-no-dev
+
+# only if `composer config repositories` listed a path/vcs entry for it
+composer config --unset repositories.<name>
+
+rm -f config/pterodactyl-client-api.php
+php artisan optimize:clear
+php artisan route:list --path=api-keys | grep application   # must print nothing now
+```
+
+If the step 1 `grep` found `PterodactylApiAddonServiceProvider` in `config/app.php` or
+`bootstrap/providers.php` (a manual install, not through Composer), delete that line and the
+copied source files instead of running `composer remove`.
+
+Removing a published config file matters: Laravel merges package config only one level deep, so
+an old `api_key` block would replace the new one entirely (with the 2.0.0 file, the key cap
+silently becomes 10 instead of 5).
+
+If you are already on `nextscale-asia/pterodactyl-client-api`, you can skip the removal and run
+the install command directly; Composer upgrades it in place. Still delete an old published config.
+
+**3. Install 2.1** with the command in [Installation](#installation).
+
+**After removing 1.x:** 1.x had **no authorization** on key creation (any panel user could mint a
+key for any user, including root admins). Review admin accounts for keys you did not create:
+
+```sql
+SELECT k.identifier, u.username, k.memo, k.created_at, k.last_used_at
+FROM api_keys k JOIN users u ON u.id = k.user_id
+WHERE k.key_type = 1 AND u.root_admin = 1 ORDER BY k.created_at DESC;
+```
+
+Keys created by 1.x are ordinary panel keys and keep working. 2.0.0 never managed to create a
+key, so there is nothing to clean up from it.
+
+### Panel running in Docker (official image)
+
+In the official `ghcr.io/pterodactyl/panel` image the panel lives in `/app` and only `/app/var`,
+logs, nginx config and certificates are volumes. `vendor/` and `config/` are part of the image, so:
+
+- **Removing:** a package installed with `docker compose exec panel composer require …` disappears
+  when the container is recreated: `docker compose up -d --force-recreate panel`.
+- **Installing:** `composer require` inside a running container does not survive a recreate or
+  an image update. Build your own image instead:
+
+```dockerfile
+FROM ghcr.io/pterodactyl/panel:v1.15.1
+# Same steps as the official image's own composer install.
+RUN cp .env.example .env \
+ && composer require nextscale-asia/pterodactyl-client-api:^2.1 --update-no-dev --optimize-autoloader \
+ && rm -rf .env bootstrap/cache/*.php \
+ && chown -R nginx:nginx .
+```
+
+Then point `image:` (or `build:`) in your `docker-compose.yml` at it and run
+`docker compose up -d panel`. Rebuild it whenever you change the panel version.
+
 ## Authentication and permissions
 
 All endpoints sit under `/api/application` and use the same middleware as the panel's own
 Application API:
 
-- An **application API key** (`ptla_…`) owned by a **root admin** is required. Account keys
-  (`ptlc_…`) and browser sessions are rejected with 403.
-- The key's ACL must grant:
+- The caller must be a **root admin**. Account keys (`ptlc_…`) and browser sessions of other
+  users are rejected with 403. As with the panel's own Application API, a root admin's account
+  key or session also passes and is **not** limited by the ACL below; use an application key
+  (`ptla_…`) for integrations.
+- An application key's ACL must grant:
 
 | Endpoint | ACL resource | Level |
 |---|---|---|
@@ -170,7 +264,7 @@ More detail (Vietnamese): [docs/API.md](docs/API.md).
 ## Running tests
 
 The tests are panel integration tests: they run inside a copy of the panel with this package
-installed, against MySQL in Docker. Only Docker is required (Git Bash works on Windows).
+installed, against MariaDB in Docker. Only Docker is required (Git Bash works on Windows).
 
 ```bash
 scripts/test-in-panel.sh <path-to-panel-source> [phpunit args...]
