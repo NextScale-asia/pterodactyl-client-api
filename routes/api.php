@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use Byzic\PterodactylClientApi\Http\Controllers\ApiKeyController;
 use Byzic\PterodactylClientApi\Http\Controllers\FreeAllocationController;
+use Byzic\PterodactylClientApi\Http\Controllers\ServerTransferController;
 use Pterodactyl\Http\Middleware\RequireTwoFactorAuthentication;
 
 /*
@@ -22,4 +23,15 @@ Route::middleware(['api', RequireTwoFactorAuthentication::class, 'application-ap
 
         Route::get('/nodes/{node:id}/allocations/free', FreeAllocationController::class)
             ->name('api.application.allocations.free');
+
+        /*
+        | There is deliberately NO `DELETE /servers/{server}/transfer`: the panel registers
+        | `DELETE /api/application/servers/{server:id}/{force?}`, so that path is the panel's
+        | SERVER DELETE (with force = "transfer"). Cancelling is a POST to a sub-path instead.
+        */
+        Route::group(['prefix' => '/servers/{server:id}/transfer'], function () {
+            Route::get('/', [ServerTransferController::class, 'show'])->name('api.application.servers.transfer');
+            Route::post('/', [ServerTransferController::class, 'store']);
+            Route::post('/cancel', [ServerTransferController::class, 'cancel'])->name('api.application.servers.transfer.cancel');
+        });
     });

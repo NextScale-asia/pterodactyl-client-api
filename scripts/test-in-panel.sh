@@ -71,5 +71,6 @@ docker run --rm --network "$ID" \
 
     vendor/bin/phpunit \
       tests/Integration/Api/Application/Users/UserApiKeyControllerTest.php \
-      tests/Integration/Api/Application/Users/FreeAllocationControllerTest.php "$@"
+      tests/Integration/Api/Application/Users/FreeAllocationControllerTest.php \
+      tests/Integration/Api/Application/Users/ServerTransferControllerTest.php "$@"
   ' bash "$@"

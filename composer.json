@@ -1,13 +1,14 @@
 {
     "name": "nextscale-asia/pterodactyl-client-api",
-    "description": "Application API endpoints for managing users' account API keys and listing free allocations in Pterodactyl Panel",
+    "description": "Application API endpoints for managing users' account API keys, listing free allocations and transferring servers through a relay in Pterodactyl Panel",
     "keywords": [
         "pterodactyl",
         "laravel",
         "api-addon",
         "api-key-management",
         "client-api",
-        "free-allocation"
+        "free-allocation",
+        "server-transfer"
     ],
     "homepage": "https://github.com/NextScale-asia/Panel-Client-API",
     "license": "MIT",
