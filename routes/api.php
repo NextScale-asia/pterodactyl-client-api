@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use Byzic\PterodactylClientApi\Http\Controllers\ApiKeyController;
+use Byzic\PterodactylClientApi\Http\Controllers\EggVariableController;
 use Byzic\PterodactylClientApi\Http\Controllers\FreeAllocationController;
 use Byzic\PterodactylClientApi\Http\Controllers\ServerTransferController;
 use Pterodactyl\Http\Middleware\RequireTwoFactorAuthentication;
@@ -23,6 +24,10 @@ Route::middleware(['api', RequireTwoFactorAuthentication::class, 'application-ap
 
         Route::get('/nodes/{node:id}/allocations/free', FreeAllocationController::class)
             ->name('api.application.allocations.free');
+
+        Route::put('/eggs/{egg:id}/variables/{env}', EggVariableController::class)
+            ->where('env', '[A-Za-z_][A-Za-z0-9_]{0,190}')
+            ->name('api.application.eggs.variables.upsert');
 
         /*
         | There is deliberately NO `DELETE /servers/{server}/transfer`: the panel registers

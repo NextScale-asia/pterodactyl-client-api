@@ -4,6 +4,15 @@ All notable changes to `pterodactyl-client-api` will be documented in this file.
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-10-08
+
+### Added
+- `PUT /api/application/eggs/{egg}/variables/{env}` (`eggs: write`): create or update one egg
+  variable by its environment variable name, through the panel's `VariableCreationService` /
+  `VariableUpdateService`. `201` when created, `200` when updated. Reserved names and unknown
+  validation rules return `400` (an unknown rule is a 500 in the panel itself). Tested on panel
+  1.13.0, 1.14.0 and 1.15.1.
+
 ## [2.2.0] - 2026-10-06
 
 ### Added

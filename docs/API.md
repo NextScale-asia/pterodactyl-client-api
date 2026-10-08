@@ -1,4 +1,4 @@
-# Pterodactyl Client API: tài liệu API (v2.2.0)
+# Pterodactyl Client API: tài liệu API (v2.3.0)
 
 > Package: `nextscale-asia/pterodactyl-client-api` (namespace `Byzic\PterodactylClientApi`)
 > Panel hỗ trợ: 1.13, 1.14 (Laravel 11), 1.15 (Laravel 12); PHP 8.2+
@@ -159,6 +159,7 @@ Trong Admin → Application API, chọn quyền cho key:
 | GET transfer | Servers | Read | |
 | POST transfer | Servers | Write | |
 | POST transfer/cancel | Servers | Write | |
+| PUT eggs/{egg}/variables/{env} | Eggs | Write | v2.3.0 |
 
 `AdminAcl` kiểm theo bitmask (`r_users & mức yêu cầu`). Trong giao diện panel, "Read & Write" = 3, đủ cho cả ba endpoint api-keys. Nếu key chỉ có Write (2), GET sẽ bị 403.
 
@@ -517,6 +518,32 @@ Nếu Wings đích giữ server mãi (200) hoặc Wings nguồn kẹt cờ `tran
 - Giữ `net.ipv4.ip_unprivileged_port_start = 1024` (mặc định của kernel). Hạ giá trị này (một số image container/rootless đặt `0`) thì process không có quyền root bind được cổng relay `781` khi agent tắt và nhận JWT.
 - Wings phải chạy trong **host network namespace** (cài trực tiếp, hoặc container `network_mode: host`). `127.0.0.1` trong `relay_url` là loopback của namespace nơi Wings chạy; Wings trong network namespace riêng sẽ gọi loopback của chính nó, không tới relay của agent.
 - hosting-api phải **luôn gửi `relay_url`** trong body POST. Không dựa vào việc tắt `require_relay` để "dùng tạm" URL gốc của panel: khi đó JWT đi thẳng ra FQDN node đích.
+
+---
+
+## 7b. PUT `/api/application/eggs/{egg}/variables/{env}` (v2.3.0)
+
+Tạo biến `{env}` cho egg, hoặc cập nhật nếu egg đã có biến trùng đúng tên đó. Dùng chính
+`VariableCreationService` / `VariableUpdateService` của panel (như tab Variables trong admin egg).
+
+| Param | Rule | Ghi chú |
+|-------|------|---------|
+| `egg` | `{egg:id}` binding | Không tồn tại → 404 |
+| `env` | `[A-Za-z_][A-Za-z0-9_]{0,190}` | Sai dạng → 404. Tên bị panel cấm (`SERVER_MEMORY`, `STARTUP`…) → 400 |
+| `name` | `required|string|max:191` | |
+| `description` | `nullable|string` | |
+| `default_value` | `nullable|string` | Trống = server cũ nhận giá trị rỗng |
+| `user_viewable`, `user_editable` | `required|boolean` | |
+| `rules` | `nullable|string` | Rule Laravel; rule không tồn tại → 400 |
+
+ACL: **Eggs Write**. Route name: `api.application.eggs.variables.upsert`.
+
+Trả `201` khi tạo mới, `200` khi cập nhật; body là `EggVariableTransformer` của panel
+(`"object": "egg"`, `attributes.env_variable`, `default_value`, `user_viewable`, `user_editable`, `rules`).
+Không đụng biến khác của egg. Server có sẵn thấy biến mới với giá trị mặc định cho tới khi được đặt riêng.
+
+Dùng bởi hosting-api: Admin → Panel → "Biến múi giờ (TZ)" thêm `TZ` cho egg để patch Wings
+AllBoosts (`v1.13.3-ab.*`) áp múi giờ riêng từng server.
 
 ---
 

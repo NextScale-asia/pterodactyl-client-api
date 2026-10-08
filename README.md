@@ -9,6 +9,8 @@ Adds Application API endpoints to Pterodactyl Panel that the panel does not ship
   billing or provisioning system that needs a client key per user to drive the Client API
   (console, power, files) on that user's behalf.
 - **List the free allocations of a node.**
+- **Create or update an egg variable** by its environment variable name (for example add a
+  user-editable `TZ` variable to every egg).
 - **Transfer a server to another node** through a relay on the source node (start, inspect
   with an integrity check, and clear a dead transfer).
 
@@ -162,6 +164,7 @@ Application API:
 | `GET …/servers/{server}/transfer` | Servers | Read |
 | `POST …/servers/{server}/transfer` | Servers | Read & Write |
 | `POST …/servers/{server}/transfer/cancel` | Servers | Read & Write |
+| `PUT …/eggs/{egg}/variables/{env}` | Eggs | Read & Write |
 
 - Keys of **root admins** cannot be listed, created or deleted (403), because a key minted for
   an admin is a full panel takeover. See `allow_admin_targets` below to opt back in.
@@ -180,13 +183,14 @@ Application API:
 | POST | `/api/application/servers/{server}/transfer` | Start a transfer to another node through the agent relay |
 | GET | `/api/application/servers/{server}/transfer` | Latest transfer; `?verify=1` adds an integrity check |
 | POST | `/api/application/servers/{server}/transfer/cancel` | Mark a dead pending transfer as failed |
+| PUT | `/api/application/eggs/{egg}/variables/{env}` | Create or update one egg variable |
 
 > **Never call `DELETE /api/application/servers/{server}/transfer`.** This package has no such
 > route: the panel's own `DELETE /api/application/servers/{server:id}/{force?}` matches that path,
 > so it **deletes the server** (with `force = "transfer"`). An early 2.2.0 draft used DELETE for
 > cancelling; every client must use `POST …/transfer/cancel` instead.
 
-`{user}`, `{node}` and `{server}` are panel IDs. Unknown IDs return 404.
+`{user}`, `{node}`, `{server}` and `{egg}` are panel IDs. Unknown IDs return 404.
 
 ### Create a key
 
@@ -323,6 +327,30 @@ Node requirements for the relay model:
 - run Wings in the host network namespace (native install or `network_mode: host`), otherwise
   `127.0.0.1` in `relay_url` is Wings' own loopback, not the agent's;
 - hosting-api must always send `relay_url` in the body (do not rely on turning `require_relay` off).
+
+### Egg variables
+
+`PUT /api/application/eggs/{egg}/variables/{env}` creates the variable `{env}` on the egg, or
+updates it when the egg already has one with that exact name. `{env}` must match
+`[A-Za-z_][A-Za-z0-9_]{0,190}` (otherwise 404).
+
+```json
+{
+  "name": "Timezone",
+  "description": "IANA timezone, empty = node timezone",
+  "default_value": "",
+  "user_viewable": true,
+  "user_editable": true,
+  "rules": "nullable|string|max:64"
+}
+```
+
+`name`, `user_viewable` and `user_editable` are required. Returns the variable (panel
+`EggVariableTransformer`, whose `object` is `"egg"`) with `201` when created and `200` when
+updated. The panel's own services do the work, so reserved names (`SERVER_MEMORY`, `STARTUP`,
+…) and unknown validation rules are refused with `400`. Other variables of the egg are not
+touched. Existing servers see the new variable with its default value until a value is set for
+them.
 
 ## Configuration
 
