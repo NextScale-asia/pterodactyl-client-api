@@ -165,6 +165,8 @@ Application API:
 | `POST …/servers/{server}/transfer` | Servers | Read & Write |
 | `POST …/servers/{server}/transfer/cancel` | Servers | Read & Write |
 | `PUT …/eggs/{egg}/variables/{env}` | Eggs | Read & Write |
+| `GET …/database-hosts`, `GET …/database-hosts/{id}` | Database Hosts | Read |
+| `POST …/database-hosts`, `PATCH`/`DELETE …/database-hosts/{id}` | Database Hosts | Read & Write |
 
 - Keys of **root admins** cannot be listed, created or deleted (403), because a key minted for
   an admin is a full panel takeover. See `allow_admin_targets` below to opt back in.
@@ -184,6 +186,11 @@ Application API:
 | GET | `/api/application/servers/{server}/transfer` | Latest transfer; `?verify=1` adds an integrity check |
 | POST | `/api/application/servers/{server}/transfer/cancel` | Mark a dead pending transfer as failed |
 | PUT | `/api/application/eggs/{egg}/variables/{env}` | Create or update one egg variable |
+| GET | `/api/application/database-hosts` | List database hosts (paginated) |
+| GET | `/api/application/database-hosts/{id}` | One database host |
+| POST | `/api/application/database-hosts` | Create a database host |
+| PATCH | `/api/application/database-hosts/{id}` | Update a database host |
+| DELETE | `/api/application/database-hosts/{id}` | Delete a database host that has no databases |
 
 > **Never call `DELETE /api/application/servers/{server}/transfer`.** This package has no such
 > route: the panel's own `DELETE /api/application/servers/{server:id}/{force?}` matches that path,
@@ -351,6 +358,35 @@ updated. The panel's own services do the work, so reserved names (`SERVER_MEMORY
 …) and unknown validation rules are refused with `400`. Other variables of the egg are not
 touched. Existing servers see the new variable with its default value until a value is set for
 them.
+
+### Database hosts
+
+The panel's admin "Databases" page as API endpoints. A database host is the MySQL / MariaDB
+server the panel creates server databases on.
+
+```json
+{
+  "name": "Shared MariaDB",
+  "host": "db.example.com",
+  "port": 3306,
+  "username": "pterodactyl",
+  "password": "…",
+  "node_id": null
+}
+```
+
+`POST` needs every field except `node_id`. `PATCH` changes only the fields it is sent: a missing
+or empty `password` keeps the stored one and `"node_id": null` unlinks the node. `host` must match
+`[\w\-.]+`, like the admin form.
+
+The panel's own `HostCreationService` / `HostUpdateService` do the work: the password is stored
+encrypted and the panel runs a query on the host with the given account before the row is kept.
+If the host cannot be reached or refuses the account, the answer is `400` with the driver's
+message and nothing is saved. `DELETE` returns `204`, or `400` while databases still exist on
+the host.
+
+Responses use `"object": "database_host"` with `id`, `name`, `host`, `port`, `username`, `node`,
+`max_databases`, `databases_count`, `created_at`, `updated_at`. The password is never returned.
 
 ## Configuration
 

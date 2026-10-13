@@ -73,5 +73,6 @@ docker run --rm --network "$ID" \
       tests/Integration/Api/Application/Users/UserApiKeyControllerTest.php \
       tests/Integration/Api/Application/Users/FreeAllocationControllerTest.php \
       tests/Integration/Api/Application/Users/ServerTransferControllerTest.php \
-      tests/Integration/Api/Application/Users/EggVariableControllerTest.php "$@"
+      tests/Integration/Api/Application/Users/EggVariableControllerTest.php \
+      tests/Integration/Api/Application/Users/DatabaseHostControllerTest.php "$@"
   ' bash "$@"

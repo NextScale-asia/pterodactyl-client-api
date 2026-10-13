@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use Byzic\PterodactylClientApi\Http\Controllers\ApiKeyController;
 use Byzic\PterodactylClientApi\Http\Controllers\EggVariableController;
+use Byzic\PterodactylClientApi\Http\Controllers\DatabaseHostController;
 use Byzic\PterodactylClientApi\Http\Controllers\FreeAllocationController;
 use Byzic\PterodactylClientApi\Http\Controllers\ServerTransferController;
 use Pterodactyl\Http\Middleware\RequireTwoFactorAuthentication;
@@ -28,6 +29,14 @@ Route::middleware(['api', RequireTwoFactorAuthentication::class, 'application-ap
         Route::put('/eggs/{egg:id}/variables/{env}', EggVariableController::class)
             ->where('env', '[A-Za-z_][A-Za-z0-9_]{0,190}')
             ->name('api.application.eggs.variables.upsert');
+
+        Route::group(['prefix' => '/database-hosts'], function () {
+            Route::get('/', [DatabaseHostController::class, 'index'])->name('api.application.database-hosts');
+            Route::get('/{databaseHost:id}', [DatabaseHostController::class, 'view'])->name('api.application.database-hosts.view');
+            Route::post('/', [DatabaseHostController::class, 'store']);
+            Route::patch('/{databaseHost:id}', [DatabaseHostController::class, 'update']);
+            Route::delete('/{databaseHost:id}', [DatabaseHostController::class, 'delete']);
+        });
 
         /*
         | There is deliberately NO `DELETE /servers/{server}/transfer`: the panel registers

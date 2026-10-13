@@ -4,6 +4,20 @@ All notable changes to `pterodactyl-client-api` will be documented in this file.
 
 ## [Unreleased]
 
+## [2.3.1] - 2026-10-13
+
+### Added
+- Database hosts (the admin "Databases" page) on the Application API, ACL resource
+  `database_hosts`:
+  `GET /api/application/database-hosts` (paginated) and `GET …/database-hosts/{id}` (read),
+  `POST …/database-hosts`, `PATCH …/database-hosts/{id}` and `DELETE …/database-hosts/{id}` (write).
+  Create and update go through the panel's `HostCreationService` / `HostUpdateService`, so the
+  password is stored encrypted and the panel connects to the host before anything is kept; a host
+  that cannot be reached or refuses the account returns `400` and nothing is saved. Delete is
+  refused with `400` while the host still has databases. The password is write-only and is never
+  part of a response. Each host also reports `max_databases` and `databases_count`. Tested on
+  panel 1.13.0, 1.14.0 and 1.15.1.
+
 ## [2.3.0] - 2026-10-08
 
 ### Added

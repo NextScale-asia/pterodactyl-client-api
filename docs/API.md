@@ -1,10 +1,10 @@
-# Pterodactyl Client API: tài liệu API (v2.3.0)
+# Pterodactyl Client API: tài liệu API (v2.3.1)
 
 > Package: `nextscale-asia/pterodactyl-client-api` (namespace `Byzic\PterodactylClientApi`)
 > Panel hỗ trợ: 1.13, 1.14 (Laravel 11), 1.15 (Laravel 12); PHP 8.2+
-> Cập nhật: 2026-10-06
+> Cập nhật: 2026-10-13
 
-Addon thêm 7 endpoint vào Application API của Pterodactyl Panel. Panel gốc không có các endpoint này:
+Addon thêm 13 endpoint vào Application API của Pterodactyl Panel. Panel gốc không có các endpoint này:
 
 | # | Method | Path | Mục đích |
 |---|--------|------|----------|
@@ -15,6 +15,8 @@ Addon thêm 7 endpoint vào Application API của Pterodactyl Panel. Panel gốc
 | 5 | `POST` | `/api/application/servers/{server}/transfer` | Bắt đầu transfer server sang node khác qua relay của agent (mục 7) |
 | 6 | `GET` | `/api/application/servers/{server}/transfer` | Transfer mới nhất, kèm kiểm toàn vẹn khi `?verify=1` |
 | 7 | `POST` | `/api/application/servers/{server}/transfer/cancel` | Đánh dấu thất bại một transfer đã chết |
+| 8 | `PUT` | `/api/application/eggs/{egg}/variables/{env}` | Tạo hoặc cập nhật một biến của egg (mục 7b) |
+| 9–13 | `GET` `POST` `PATCH` `DELETE` | `/api/application/database-hosts[/{id}]` | Quản lý database host (mục 7c) |
 
 > **Cảnh báo:** **không bao giờ** gọi `DELETE /api/application/servers/{server}/transfer`. Addon không có route đó; panel gốc có `DELETE /api/application/servers/{server:id}/{force?}`, nên path này là lệnh **XOÁ SERVER** của panel (`force = "transfer"`). Bản nháp 2.2.0 trước đây dùng DELETE; mọi client cũ phải chuyển sang `POST …/transfer/cancel`.
 
@@ -160,6 +162,8 @@ Trong Admin → Application API, chọn quyền cho key:
 | POST transfer | Servers | Write | |
 | POST transfer/cancel | Servers | Write | |
 | PUT eggs/{egg}/variables/{env} | Eggs | Write | v2.3.0 |
+| GET database-hosts, database-hosts/{id} | Database Hosts | Read | v2.3.1 |
+| POST / PATCH / DELETE database-hosts | Database Hosts | Write | v2.3.1 |
 
 `AdminAcl` kiểm theo bitmask (`r_users & mức yêu cầu`). Trong giao diện panel, "Read & Write" = 3, đủ cho cả ba endpoint api-keys. Nếu key chỉ có Write (2), GET sẽ bị 403.
 
@@ -544,6 +548,37 @@ Không đụng biến khác của egg. Server có sẵn thấy biến mới vớ
 
 Dùng bởi hosting-api: Admin → Panel → "Biến múi giờ (TZ)" thêm `TZ` cho egg để patch Wings
 AllBoosts (`v1.13.3-ab.*`) áp múi giờ riêng từng server.
+
+---
+
+## 7c. Database hosts: `/api/application/database-hosts` (v2.3.1)
+
+Trang Admin → Databases của panel dưới dạng API. Database host là máy MySQL / MariaDB mà panel tạo database cho server.
+
+| Method | Path | ACL | Kết quả |
+|--------|------|-----|---------|
+| `GET` | `/api/application/database-hosts` | Database Hosts Read | Danh sách, phân trang (`per_page` 1–100, mặc định 50) |
+| `GET` | `/api/application/database-hosts/{id}` | Database Hosts Read | Một host; không tồn tại → 404 |
+| `POST` | `/api/application/database-hosts` | Database Hosts Write | Tạo host → 201 |
+| `PATCH` | `/api/application/database-hosts/{id}` | Database Hosts Write | Sửa host → 200 |
+| `DELETE` | `/api/application/database-hosts/{id}` | Database Hosts Write | Xoá host → 204 |
+
+| Field | Rule | Ghi chú |
+|-------|------|---------|
+| `name` | `required|string|max:191` | |
+| `host` | `required|string|max:191|regex:/^[\w\-\.]+$/` | Giống form admin của panel |
+| `port` | `required|integer|between:1,65535` | |
+| `username` | `required|string|max:32` | Tài khoản có quyền tạo user và database |
+| `password` | `required|string|max:191` khi tạo | PATCH: thiếu hoặc rỗng = giữ mật khẩu đang lưu |
+| `node_id` | `nullable|integer|exists:nodes,id` | PATCH `null` = gỡ node |
+
+PATCH chỉ đổi những field có trong body.
+
+Tạo và sửa đi qua `HostCreationService` / `HostUpdateService` của panel: mật khẩu được mã hoá khi lưu, và panel chạy thử một câu truy vấn trên host bằng tài khoản được gửi trước khi giữ bản ghi. Host không kết nối được hoặc từ chối tài khoản → `400` kèm thông báo của driver, không có gì được lưu. Xoá host còn database → `400`.
+
+Body trả về có `"object": "database_host"` với `id`, `name`, `host`, `port`, `username`, `node`, `max_databases`, `databases_count`, `created_at`, `updated_at`. Mật khẩu không bao giờ nằm trong response.
+
+Dùng bởi hosting-api: Admin → Locations & Nodes → tab "Database hosts" (key `database-host-manage`).
 
 ---
 
