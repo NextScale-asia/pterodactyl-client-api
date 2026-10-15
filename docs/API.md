@@ -1,10 +1,10 @@
-# Pterodactyl Client API: tài liệu API (v2.3.1)
+# Pterodactyl Client API: tài liệu API (v2.3.2)
 
 > Package: `nextscale-asia/pterodactyl-client-api` (namespace `Byzic\PterodactylClientApi`)
 > Panel hỗ trợ: 1.13, 1.14 (Laravel 11), 1.15 (Laravel 12); PHP 8.2+
-> Cập nhật: 2026-10-13
+> Cập nhật: 2026-10-15
 
-Addon thêm 13 endpoint vào Application API của Pterodactyl Panel. Panel gốc không có các endpoint này:
+Addon thêm 26 endpoint vào Application API của Pterodactyl Panel. Panel gốc không có các endpoint này:
 
 | # | Method | Path | Mục đích |
 |---|--------|------|----------|
@@ -17,6 +17,14 @@ Addon thêm 13 endpoint vào Application API của Pterodactyl Panel. Panel gố
 | 7 | `POST` | `/api/application/servers/{server}/transfer/cancel` | Đánh dấu thất bại một transfer đã chết |
 | 8 | `PUT` | `/api/application/eggs/{egg}/variables/{env}` | Tạo hoặc cập nhật một biến của egg (mục 7b) |
 | 9–13 | `GET` `POST` `PATCH` `DELETE` | `/api/application/database-hosts[/{id}]` | Quản lý database host (mục 7c) |
+| 14 | `GET` | `/api/application/addon/info` | Phiên bản addon, capabilities, công tắc ghi egg (mục 7d) |
+| 15 | `GET` | `/api/application/eggs/{egg}/export` | Export PTDL_v2 + fingerprint (mục 7e) |
+| 16–17 | `POST` | `/api/application/eggs/{egg}/update-import[/preview]` | Ghi đè egg bằng JSON mới, có dry-run (mục 7f) |
+| 18–19 | `POST` | `/api/application/nests/{nest}/eggs/import[/preview]` | Import egg mới vào nest (mục 7g) |
+| 20–21 | `PATCH` `DELETE` | `/api/application/eggs/{egg}` | Sửa tên/mô tả/cờ, xoá egg (mục 7h) |
+| 22 | `DELETE` | `/api/application/eggs/{egg}/variables/{env}` | Xoá biến, trả giá trị server bị mất (mục 7h) |
+| 23 | `POST` | `/api/application/eggs/{egg}/server-variables/restore` | Ghi lại giá trị biến của server (mục 7h) |
+| 24–26 | `POST` `PATCH` `DELETE` | `/api/application/nests[/{nest}]` | Tạo/sửa/xoá nest (mục 7i) |
 
 > **Cảnh báo:** **không bao giờ** gọi `DELETE /api/application/servers/{server}/transfer`. Addon không có route đó; panel gốc có `DELETE /api/application/servers/{server:id}/{force?}`, nên path này là lệnh **XOÁ SERVER** của panel (`force = "transfer"`). Bản nháp 2.2.0 trước đây dùng DELETE; mọi client cũ phải chuyển sang `POST …/transfer/cancel`.
 
@@ -164,6 +172,10 @@ Trong Admin → Application API, chọn quyền cho key:
 | PUT eggs/{egg}/variables/{env} | Eggs | Write | v2.3.0 |
 | GET database-hosts, database-hosts/{id} | Database Hosts | Read | v2.3.1 |
 | POST / PATCH / DELETE database-hosts | Database Hosts | Write | v2.3.1 |
+| GET addon/info | (không cần) | | v2.3.2; key hợp lệ bất kỳ |
+| GET eggs/{egg}/export | Eggs | Read | v2.3.2 |
+| Ghi egg (update-import, import, PATCH/DELETE egg, xoá biến, restore) | Eggs | Write | v2.3.2; **cần thêm công tắc `egg_write`** (mục 7d) |
+| POST / PATCH / DELETE nests | Nests | Write | v2.3.2; **cần thêm công tắc `egg_write`** |
 
 `AdminAcl` kiểm theo bitmask (`r_users & mức yêu cầu`). Trong giao diện panel, "Read & Write" = 3, đủ cho cả ba endpoint api-keys. Nếu key chỉ có Write (2), GET sẽ bị 403.
 
@@ -549,6 +561,11 @@ Không đụng biến khác của egg. Server có sẵn thấy biến mới vớ
 Dùng bởi hosting-api: Admin → Panel → "Biến múi giờ (TZ)" thêm `TZ` cho egg để patch Wings
 AllBoosts (`v1.13.3-ab.*`) áp múi giờ riêng từng server.
 
+Từ v2.3.2: route khoá dòng egg khi ghi; body nhận thêm `expected_fingerprint` **tuỳ chọn**
+(lệch → 409 `EggChanged`); response có thêm `meta.fingerprint`; field quá cỡ cột → 422
+`EggFieldTooLong`. Route này vẫn chỉ cần Eggs Write như từ v2.3.0 và **không** nằm sau công tắc
+`egg_write` để giữ tương thích với client cũ.
+
 ---
 
 ## 7c. Database hosts: `/api/application/database-hosts` (v2.3.1)
@@ -582,6 +599,214 @@ Dùng bởi hosting-api: Admin → Locations & Nodes → tab "Database hosts" (k
 
 ---
 
+## 7d. Công tắc ghi egg/nest và GET `/api/application/addon/info` (v2.3.2)
+
+**Mặc định tắt.** Mọi route ghi egg/nest (7f–7i) trả `403` code `EggWriteDisabled` cho tới khi
+`.env` của panel có `PTERO_CLIENT_API_EGG_WRITE=true`. Lý do: trước v2.3.2 bit Write của
+`r_eggs`/`r_nests` không mở được gì, nhiều key cũ đang có sẵn bit này; còn install script của
+egg chạy bằng root trên mọi node. Bật addon không được ngầm cấp quyền đó cho key cũ.
+
+- `PTERO_CLIENT_API_EGG_WRITE_KEYS` (tuỳ chọn): danh sách identifier key (16 ký tự đầu,
+  phân cách dấu phẩy) được phép ghi. Rỗng = mọi key có ACL. Key ngoài danh sách → `403`
+  `EggWriteKeyNotAllowed`.
+- **Chỉ application key (`ptla_`)**. Panel cho account key của root admin và session trình duyệt
+  bỏ qua ACL; với các route này chúng bị chặn → `403 EggWriteNeedsApplicationKey`.
+- Thứ tự kiểm: ACL của panel (403 của panel) → công tắc → loại key → danh sách key.
+- Đọc (export, addon/info) không phụ thuộc công tắc.
+- Khuyến nghị cho key `egg-manage`: Eggs + Nests **Read & Write**, Servers **Read** (để nhận `dropped_values` có giá trị), `allowed_ips` = IP hosting-api.
+
+`GET /api/application/addon/info` (key hợp lệ bất kỳ, không cần ACL):
+
+```json
+{
+  "version": "2.3.2",
+  "capabilities": ["api-keys", "free-allocations", "server-transfer", "egg-variables", "database-hosts",
+                   "egg-fingerprint", "egg-export", "egg-update-import", "egg-import", "egg-update",
+                   "egg-delete", "egg-variable-delete", "server-variables-restore", "nest-write"],
+  "egg_write_enabled": true,
+  "egg_write_key_allowed": true
+}
+```
+
+Client dùng endpoint này để phân biệt "addon cũ / công tắc tắt" với "egg không tồn tại" (cả hai
+đều có thể là 404/403 nếu gọi thẳng route ghi).
+
+**Fingerprint (khoá lạc quan).** `sha256` của JSON chuẩn hoá gồm dòng `eggs` (trừ timestamps)
+và toàn bộ `egg_variables` của egg sắp theo `env_variable` (trừ timestamps, **có** `id`). Sửa riêng
+một biến cũng đổi fingerprint (bảng biến không `touch` `eggs.updated_at`).
+
+Quy ước trả về (một kiểu duy nhất): JSON riêng của addon (export, preview, update-import, xoá biến)
+→ **`fingerprint` ở cấp đầu**; response dùng transformer của panel (PATCH egg, import, PUT biến)
+→ **`meta.fingerprint`**. Fingerprint trả về luôn được tính trong cùng transaction với lần đọc/ghi.
+
+`expected_fingerprint`: **bắt buộc** ở update-import, PATCH/DELETE egg, DELETE biến; **tuỳ chọn**
+ở PUT biến; không dùng ở import (chưa có egg), restore và route nest. Khi có, addon mở
+transaction, `lockForUpdate` dòng egg **và các dòng biến**, tính lại, lệch → **409 `EggChanged`**.
+
+**Mã lỗi chung** (JSON:API `errors[0].code`):
+
+| HTTP | code | Khi nào |
+|------|------|---------|
+| 403 | `EggWriteDisabled` / `EggWriteKeyNotAllowed` | Công tắc tắt / key không trong danh sách |
+| 403 | `EggWriteNeedsApplicationKey` | Gọi bằng account key hoặc session |
+| 404 | `EggNotFound` / `NestNotFound` / `EggVariableNotFound` | Egg, nest hoặc biến không tồn tại |
+| 409 | `EggChanged` | `expected_fingerprint` lệch |
+| 409 | `RemovedVariablesMismatch` | Tập biến sẽ xoá khác `expected_removed` (`meta.removed`) |
+| 409 | `EggHasChildren` | Egg khác trỏ `config_from`/`copy_script_from` tới egg này (`meta.eggs`) |
+| 409 | `NestHasEggs` | Nest còn egg (`meta.eggs_count`) |
+| 409 | `HasActiveServersException` | Egg/nest còn server |
+| 422 | `InvalidFileUploadException` | `meta.version` không phải PTDL_v1/PTDL_v2 |
+| 422 | `InvalidEgg` | `variables` không phải list, thiếu/trùng `env_variable`; `startup`, `meta.update_url`, `scripts.installation.*` không phải string/null |
+| 422 | `EggTooLarge` | JSON egg > 1000 KB (giống form import của panel) |
+| 422 | `EggFieldTooLong` | Field TEXT > 65535 byte (script, config, startup, mô tả, default/rules biến, giá trị restore) hoặc container/entrypoint > 191 byte; `meta.field`. Panel chạy MySQL strict mode tắt nên sẽ cắt im lặng |
+| 422 | `EggVariableCaseMismatch` | Tên biến chỉ khác hoa/thường so với biến đang có (`meta.env`, `meta.existing`) |
+| 500 | `EggTempFileFailed` | Panel không tạo được file tạm cho JSON egg |
+
+**Tên biến phân biệt hoa/thường.** Bảng của panel dùng collation không phân biệt hoa/thường
+(`utf8mb4_unicode_ci`), nên `tz` và `TZ` là cùng một dòng với `updateOrCreate` của panel. Addon:
+- payload có hai biến trùng tên khi bỏ qua hoa/thường → 422 `InvalidEgg` (`meta.env`), áp cho
+  preview, apply và import;
+- biến trong payload (preview/apply update-import) chỉ khớp biến đang có khi bỏ qua hoa/thường →
+  422 `EggVariableCaseMismatch` (không đổi tên ngầm, không sửa cờ của biến cũ);
+- `PUT`/`DELETE …/variables/{env}` tìm đúng tên chính xác; chỉ có biến khác hoa/thường → 422
+  `EggVariableCaseMismatch` (không tạo bản trùng, không đổi tên); restore khớp tên chính xác
+  (khác hoa/thường → `skipped` với `variable_missing`).
+| 422 | `ValidationException` | Vi phạm rule model của panel (ảnh docker, `config.*` không phải JSON, tên biến bị cấm…) |
+| 422 | `BadValidationRuleException` | Rule biến không tồn tại |
+
+Body được đọc **nguyên văn** từ JSON gửi lên: middleware `TrimStrings`/`ConvertEmptyStringsToNull`
+của panel sẽ cắt khoảng trắng install script và biến `""` thành `null` nếu dùng input thường.
+
+---
+
+## 7e. GET `/api/application/eggs/{egg}/export` (v2.3.2)
+
+ACL **Eggs Read**. Trả:
+
+```json
+{
+  "egg": { "meta": {"version": "PTDL_v2", "update_url": null}, "name": "…", "variables": [ … ] },
+  "fingerprint": "<64 hex>",
+  "extra": { "config_from": null, "copy_script_from": null, "script_is_privileged": true,
+             "force_outgoing_ip": false, "nest_id": 1, "author": "support@pterodactyl.io", "uuid": "…" }
+}
+```
+
+`egg` là đúng file mà nút Export của panel tạo (`EggExporterService`, đã làm phẳng
+`inherit_config_*`/`copy_script_*`). `extra` là các trường export bỏ qua. Đọc trong một transaction
+chỉ đọc (khoá chia sẻ egg + biến), nên `egg` và `fingerprint` cùng một trạng thái.
+
+---
+
+## 7f. Ghi đè egg bằng JSON: `/api/application/eggs/{egg}/update-import[/preview]` (v2.3.2)
+
+Tương đương nút "Update Egg" (chọn file) của panel, chia hai bước.
+
+### Preview (không ghi DB)
+
+`POST …/eggs/{egg}/update-import/preview`, body `{"egg": {…PTDL object…}, "drop_variables": ["ENV", …]}`.
+
+1. Bọc JSON thành `UploadedFile` tạm → `EggParserService::handle` (kiểm `meta.version`, đổi PTDL_v1 → v2).
+2. Chuẩn hoá: chỉ giữ các khoá panel dùng; biến chỉ giữ `name, description, env_variable, default_value, user_viewable, user_editable, rules`.
+3. Biến **có trong egg nhưng thiếu trong file** và không nằm trong `drop_variables` → **tự chèn lại** định nghĩa hiện tại (mặc định an toàn), liệt kê ở `diff.variables.kept`.
+4. **Egg con** (`config_from` / `copy_script_from`): giá trị nào bằng đúng giá trị đang kế thừa
+   được trả về như đang lưu (thường là `null`) để egg vẫn kế thừa; export rồi import lại một egg
+   con không tạo thay đổi giả.
+5. Kiểm kiểu, cỡ field và rule model của panel trên bản sao chưa lưu (422 nếu sai).
+6. Tất cả chạy trong **một transaction chỉ đọc** (`SET TRANSACTION READ ONLY`, khoá chia sẻ egg +
+   biến); fingerprint đọc trước, rồi so sánh thuần PHP; chỉ có câu `SELECT`/`COUNT`.
+
+Response:
+
+| Field | Ý nghĩa |
+|-------|---------|
+| `normalized_egg` | Payload chính xác sẽ ghi; gửi lại nguyên văn ở bước apply |
+| `fingerprint` | Fingerprint hiện tại |
+| `expected_removed` | Biến apply sẽ xoá (= `drop_variables` thực sự tồn tại) |
+| `diff.fields` | `{ "<trường>": [cũ, mới] }` cho `name, description, features, docker_images, file_denylist, meta.update_url, startup, config.files/startup/logs/stop, scripts.installation.script/container/entrypoint` |
+| `diff.variables.added[]` | Định nghĩa biến mới |
+| `diff.variables.changed[]` | `{env, fields: {key: [cũ, mới]}}` |
+| `diff.variables.removed[]` | `{env, server_values}` (số server đang có giá trị riêng) |
+| `diff.variables.kept[]` | Biến được tự chèn lại |
+| `diff.servers_using_egg` | Số server dùng egg |
+| `diff.servers_on_removed_images[]` | `{image, count}` server đang chạy image bị gỡ |
+| `diff.has_parent_config`, `has_script_parent` | Egg đang kế thừa config/script |
+| `diff.children_copying_script`, `children_copying_config` | Số egg con |
+| `diff.detaches_from_parent[]` | Field đang kế thừa mà payload sẽ ghi đè (thôi kế thừa) |
+| `diff.warnings[]` | `{field, message}`: giá trị panel bỏ qua khi còn liên kết (`file_denylist` với `config_from`; container/entrypoint với `copy_script_from`) — giữ giá trị đang lưu |
+
+`diff.fields` so sánh giá trị **đang được dùng** (đã làm phẳng kế thừa như export), không phải cột thô.
+
+Preview không ghi activity log.
+
+### Apply
+
+`POST …/eggs/{egg}/update-import`, body
+`{"egg": <normalized_egg>, "expected_fingerprint": "…", "expected_removed": ["ENV", …]}`
+(`expected_removed` bắt buộc có mặt, có thể là `[]`).
+
+Trong một transaction: `lockForUpdate` egg → so fingerprint (409 `EggChanged`) → tính tập biến
+sẽ xoá, khác `expected_removed` → 409 `RemovedVariablesMismatch` → export `before` → đọc
+`server_variables` của biến sắp xoá → `EggUpdateImporterService` của panel (khớp biến theo
+`env_variable`, giữ id ⇒ giữ giá trị server của biến còn lại; `file_denylist` được lưu) → export
+`after`.
+
+Response: `{before, after, fingerprint, removed, dropped_values: [{server_id, server_uuid, env, value}], dropped_count, values_withheld}`.
+`dropped_values` có thể chứa bí mật (mật khẩu RCON…): hosting-api lưu mã hoá, addon không log.
+`value` chỉ có khi key **có thêm Servers Read**; không có thì mỗi dòng thiếu `value` và
+`values_withheld: true` (dữ liệu vẫn bị xoá — key ghi egg cần Servers Read nếu muốn khôi phục).
+Server hiện có **không** đổi startup/image riêng của mình.
+
+Activity `admin:egg.update-import`: `egg_id, name, script_sha256_old, script_sha256_new, removed, dropped_values` (số lượng).
+
+---
+
+## 7g. Import egg mới: `/api/application/nests/{nest}/eggs/import[/preview]` (v2.3.2)
+
+Body `{"egg": {…PTDL object…}}`, ACL Eggs Write.
+
+- `…/import/preview`: không ghi; trả `{normalized_egg, nest_id, same_name_eggs: [id…], diff: {variables: {added}}}`.
+- `…/import`: `EggImporterService` của panel, **luôn tạo egg mới** (id + uuid mới, không chống
+  trùng tên) → `201`, body `EggTransformer` của panel (`"object": "egg"`) + `meta.fingerprint`.
+  Activity `admin:egg.import` (`egg_id, name, nest_id, script_sha256`).
+- "Tạo egg mới từ đầu" = import một PTDL tối thiểu.
+
+---
+
+## 7h. Sửa / xoá egg, xoá biến, ghi lại giá trị server (v2.3.2)
+
+| Method | Path | Body | Kết quả |
+|--------|------|------|---------|
+| `PATCH` | `/eggs/{egg}` | `name?, description?, force_outgoing_ip?, script_is_privileged?, expected_fingerprint` | `200` `EggTransformer` + `meta.fingerprint`. Field khác (startup, docker_images, script, file_denylist, config…) → 422; những thứ đó đi qua update-import |
+| `DELETE` | `/eggs/{egg}` | `expected_fingerprint` | `204`. Egg khác có `config_from` **hoặc** `copy_script_from` trỏ tới → 409 `EggHasChildren` (panel chỉ kiểm `config_from`; `copy_script_from` bị SET NULL làm egg con mất install script). Còn server → 409 `HasActiveServersException` |
+| `DELETE` | `/eggs/{egg}/variables/{env}` | `expected_fingerprint` | `200` `{fingerprint, dropped_values, dropped_count, values_withheld}`; biến không tồn tại → 404 `EggVariableNotFound` |
+| `POST` | `/eggs/{egg}/server-variables/restore` | `values: [{server_id, env, value}]` (1–5000) | `200` `{restored: [{server_id, env}], skipped: [{server_id, env, reason}]}` |
+
+Restore chỉ ghi (`updateOrCreate server_variables`) cho server **thuộc egg này**, biến **đang tồn
+tại** trên egg và giá trị **qua rule** của biến; còn lại bỏ qua với `reason` =
+`server_not_on_egg` / `variable_missing` / `invalid_value`. Dùng để khôi phục `dropped_values`
+sau khi rollback định nghĩa biến.
+
+Activity: `admin:egg.update` (`fields`), `admin:egg.delete` (`egg_id, uuid, name, nest_id`),
+`admin:egg.variable.delete` (`env`, số giá trị), `admin:egg.server-variables.restore` (số lượng,
+danh sách env). Không bao giờ log giá trị server hay nội dung script.
+
+---
+
+## 7i. Nest: `/api/application/nests[/{nest}]` (v2.3.2)
+
+ACL **Nests Write** + công tắc `egg_write`.
+
+| Method | Path | Body | Kết quả |
+|--------|------|------|---------|
+| `POST` | `/nests` | `name` (≤191), `description?` | `201` `NestTransformer` của panel; author = `pterodactyl.service.author` |
+| `PATCH` | `/nests/{nest}` | `name?`, `description?` | `200` |
+| `DELETE` | `/nests/{nest}` | | `204`. Còn egg → **409 `NestHasEggs`** (`eggs.nest_id` ON DELETE CASCADE sẽ xoá luôn egg). Còn server → 409 `HasActiveServersException` |
+
+Activity: `admin:nest.create|update|delete`.
+
+---
+
 ## 8. Cấu hình
 
 `config/pterodactyl-client-api.php` (publish bằng `php artisan vendor:publish --provider="Byzic\PterodactylClientApi\PterodactylApiAddonServiceProvider" --tag="config"`):
@@ -595,6 +820,8 @@ Dùng bởi hosting-api: Admin → Locations & Nodes → tab "Database hosts" (k
 | `transfer.relay_port` | `CLIENT_API_TRANSFER_RELAY_PORT` | `781` | Cổng loopback của relay agent, phải khớp cấu hình agent |
 | `transfer.notifier_timeout` | `CLIENT_API_TRANSFER_NOTIFIER_TIMEOUT` | `60` | Timeout (giây) khi gọi Wings nguồn bắt đầu transfer |
 | `transfer.probe_timeout` | `CLIENT_API_TRANSFER_PROBE_TIMEOUT` | `10` | Timeout (giây) mỗi lần cancel hỏi Wings `GET /api/servers/{uuid}` |
+| `egg_write.enabled` | `PTERO_CLIENT_API_EGG_WRITE` | `false` | Bật mọi route ghi egg/nest (v2.3.2). Tắt → 403 `EggWriteDisabled` |
+| `egg_write.key_identifiers` | `PTERO_CLIENT_API_EGG_WRITE_KEYS` | rỗng | Identifier key được ghi egg/nest, phân cách dấu phẩy. Rỗng = mọi key có ACL |
 | `transfer.delete_min_age_seconds` | `CLIENT_API_TRANSFER_DELETE_MIN_AGE_SECONDS` | `1020` | Tuổi tối thiểu (giây) của transfer trước khi cancel được chấp nhận (JWT 15 phút + 2 phút lệch đồng hồ). Nhỏ hơn → 409 `too_early` |
 
 Đổi env xong chạy `php artisan config:clear` (hoặc `config:cache` nếu panel cache config).
@@ -611,8 +838,8 @@ scripts/test-in-panel.sh <panel-source> --filter testKeyLimitIsApplied   # thêm
 ```
 
 - Script mount source panel ở chế độ chỉ đọc vào `/src` rồi copy bên trong container, không sửa thư mục nguồn; cài addon qua composer path repository; copy `tests/Integration/*.php` vào `tests/Integration/Api/Application/Users/` của panel rồi chạy phpunit.
-- Biến môi trường: `PHP_VERSION` (mặc định `8.3`), `DB_IMAGE` (mặc định `mariadb:11`), `KEEP=1` giữ lại container DB và network để debug.
-- File test: `tests/Integration/UserApiKeyControllerTest.php`, `tests/Integration/FreeAllocationControllerTest.php`, `tests/Integration/ServerTransferControllerTest.php`. Test transfer giả lập Wings bằng `Http::fake()` (addon gọi Wings qua HTTP client của Laravel), không cần Wings thật.
+- Biến môi trường: `PHP_VERSION` (mặc định `8.3`), `DB_IMAGE` (mặc định `mariadb:11`), `KEEP=1` giữ lại container DB và network để debug, `ROUTE_CACHE=1` chạy `php artisan optimize` (cache route + config như khi cập nhật addon trên prod, với `PTERO_CLIENT_API_EGG_WRITE=true`) trước phpunit; `RouteCacheTest` chỉ chạy ở chế độ này.
+- File test: `tests/Integration/UserApiKeyControllerTest.php`, `tests/Integration/FreeAllocationControllerTest.php`, `tests/Integration/ServerTransferControllerTest.php`, `EggVariableControllerTest.php`, `DatabaseHostControllerTest.php`, `EggWriteGateTest.php`, `EggShareControllerTest.php`, `EggControllerTest.php`, `NestControllerTest.php`, `EggHardeningTest.php` (danh sách cứng trong `scripts/test-in-panel.sh`; file mới phải thêm vào đó). Test egg/nest bật công tắc bằng `config()`. Test transfer giả lập Wings bằng `Http::fake()` (addon gọi Wings qua HTTP client của Laravel), không cần Wings thật.
 
 ---
 

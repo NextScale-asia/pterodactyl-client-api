@@ -21,6 +21,18 @@ return [
         'max_per_page' => (int) env('CLIENT_API_ALLOCATIONS_MAX_PER_PAGE', 100),
     ],
 
+    'egg_write' => [
+        // Turns on every egg / nest WRITE route (update-import, import, PATCH/DELETE egg, delete
+        // variable, restore server values, nest create/update/delete). Off by default: before
+        // 2.3.2 the WRITE bit of r_eggs / r_nests unlocked nothing, so existing keys may carry it,
+        // and an egg's install script runs as root on the nodes. Reads (export) stay available.
+        'enabled' => (bool) env('PTERO_CLIENT_API_EGG_WRITE', false),
+
+        // Optional allow-list of API key identifiers (the 16-character key prefix) that may use
+        // those routes; comma separated in the env. Empty = any key whose ACL allows the write.
+        'key_identifiers' => array_values(array_filter(array_map('trim', explode(',', (string) env('PTERO_CLIENT_API_EGG_WRITE_KEYS', ''))))),
+    ],
+
     'transfer' => [
         // Require POST /servers/{server}/transfer to carry a relay_url pointing at the local
         // wings-ops-agent relay. With this on, the transfer JWT is only ever sent to

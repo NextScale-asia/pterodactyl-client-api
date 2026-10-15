@@ -4,6 +4,87 @@ All notable changes to `pterodactyl-client-api` will be documented in this file.
 
 ## [Unreleased]
 
+## [2.3.2] - 2026-10-15
+
+> **Read before upgrading.** Until now the Write bit of the Nests ACL, and the Eggs Write bit for
+> anything beyond `PUT …/eggs/{egg}/variables/{env}` (2.3.0), unlocked nothing on the Application
+> API, so many existing keys carry them. From this release they mean "may rewrite eggs, their
+> install scripts (run as root on every node) and nests". The new write routes are therefore
+> **off** until the panel's `.env` sets `PTERO_CLIENT_API_EGG_WRITE=true`; while off they answer
+> `403 EggWriteDisabled`. They only accept **application keys** (`ptla_`): a root admin's account
+> key or browser session, which the panel lets skip the ACL, gets `403
+> EggWriteNeedsApplicationKey`. Optionally limit them to named keys with
+> `PTERO_CLIENT_API_EGG_WRITE_KEYS=<identifier>,…`, and give the key that uses them `allowed_ips`.
+> Review which keys hold Eggs / Nests Write before switching on. `PUT …/variables/{env}` keeps
+> working as in 2.3.0 (Eggs Write, not behind the switch).
+
+### Added
+- `GET /api/application/addon/info` (any valid key): `version`, `capabilities[]`,
+  `egg_write_enabled`, `egg_write_key_allowed`.
+- Egg fingerprint: `sha256` over the stored egg row and all its variables (ids included,
+  timestamps excluded). Returned as top-level `fingerprint` in the addon's own JSON responses and
+  as `meta.fingerprint` in responses built with the panel's transformers, always computed in the
+  same transaction as the write. `expected_fingerprint` is required on update-import, `PATCH` /
+  `DELETE …/eggs/{egg}` and `DELETE …/variables/{env}`, optional on `PUT …/variables/{env}`, and
+  not used by import (no egg yet), restore and nest routes. When given, the egg row and its
+  variables are locked and a mismatch answers `409 EggChanged`.
+- `GET /api/application/eggs/{egg}/export` (`eggs: read`): the panel's PTDL_v2 export,
+  `fingerprint` and `extra` (`config_from`, `copy_script_from`, `script_is_privileged`,
+  `force_outgoing_ip`, `nest_id`, `author`, `uuid`), read from one consistent snapshot.
+- `POST …/eggs/{egg}/update-import/preview` and `POST …/eggs/{egg}/update-import`
+  (`eggs: write` + switch): the admin "Update Egg" from a JSON object. The preview never writes:
+  it runs in one read-only transaction with the egg and its variables share-locked, does a
+  pure-PHP diff and runs the panel's model validation on an unsaved copy. It re-adds variables the
+  file leaves out unless they are listed in `drop_variables`, and returns `normalized_egg`,
+  `fingerprint`, `expected_removed` and a per-field / per-variable diff with server counts. For a
+  child egg (`config_from` / `copy_script_from`) the diff compares inherited values the way the
+  export shows them, values equal to what the child inherits stay inherited in `normalized_egg`,
+  `diff.detaches_from_parent` lists fields that would stop inheriting and `diff.warnings` lists
+  values the panel ignores while linked (`file_denylist`, script container / entrypoint).
+  The apply checks the fingerprint and `expected_removed` (`409 RemovedVariablesMismatch`), runs
+  the panel's `EggUpdateImporterService` and returns `before` / `after` exports, the new
+  fingerprint and `dropped_values` (server values of deleted variables).
+- `POST …/nests/{nest}/eggs/import/preview` and `POST …/nests/{nest}/eggs/import`: import a new
+  egg (`EggImporterService`, always a new id/uuid).
+- `PATCH …/eggs/{egg}`: only `name`, `description`, `force_outgoing_ip`, `script_is_privileged`.
+- `DELETE …/eggs/{egg}`: also refused (`409 EggHasChildren`) when another egg copies its install
+  script (`copy_script_from`), which the panel does not check.
+- `DELETE …/eggs/{egg}/variables/{env}`: returns the deleted server values.
+- `dropped_values` (update-import, variable delete) carries the server values themselves only when
+  the key also has Servers Read; otherwise each row comes without `value` and
+  `values_withheld: true`. `dropped_count` is always present.
+- `POST …/eggs/{egg}/server-variables/restore`: writes server values back for servers of the egg
+  and existing variables, validated against the variable's rules (at most 5000 values).
+- `POST /nests`, `PATCH /nests/{nest}`, `DELETE /nests/{nest}` (`nests: write` + switch); delete is
+  refused with `409 NestHasEggs` because the panel's foreign key would delete the eggs with it.
+- Errors: panel exceptions on these routes are mapped to `409` (servers / children) and `422`
+  (bad file, failed model validation, unknown rule). Also `422 EggTooLarge` (egg JSON > 1000 KB),
+  `422 EggFieldTooLong` (a TEXT field over 65535 bytes or script container / entrypoint over 191
+  bytes, also for `PUT …/variables/{env}` and restore values: the panel runs MySQL with strict mode
+  off and would truncate silently), `422 InvalidEgg` (wrong field types, duplicate variables),
+  `404 EggNotFound` / `NestNotFound` / `EggVariableNotFound`, `500 EggTempFileFailed`.
+  Variable names are matched exactly although the panel's collation is case-insensitive: two
+  payload variables equal ignoring case → `422 InvalidEgg`; a payload or `PUT` / `DELETE
+  …/variables/{env}` name that only matches a stored variable ignoring case (`tz` vs `TZ`) →
+  `422 EggVariableCaseMismatch` instead of silently updating, duplicating or renaming it; restore
+  skips such names (`variable_missing`). Egg bodies
+  are read as sent, bypassing the panel's TrimStrings / ConvertEmptyStringsToNull middleware.
+- Activity events `admin:egg.update-import`, `admin:egg.import`, `admin:egg.update`,
+  `admin:egg.delete`, `admin:egg.variable.delete`, `admin:egg.server-variables.restore`,
+  `admin:nest.create|update|delete`, written after commit (a failing log write is reported, the
+  response still succeeds). Previews are not logged; scripts only as `sha256`; server values
+  never.
+- Config block `egg_write` (`enabled`, `key_identifiers`).
+
+### Changed
+- `PUT …/eggs/{egg}/variables/{env}` locks the egg row, accepts an optional
+  `expected_fingerprint`, refuses oversized fields and adds `meta.fingerprint` to the response.
+  It still needs only Eggs Write, as since 2.3.0, and is not behind the `egg_write` switch.
+
+### Tested
+- Panel 1.13.0, 1.14.0 and 1.15.1 (`scripts/test-in-panel.sh`, 139 tests; `ROUTE_CACHE=1` on 1.13.0
+  and 1.15.1), plus an end-to-end run against a live 1.15.1 panel with Wings through hosting-api.
+
 ## [2.3.1] - 2026-10-13
 
 ### Added

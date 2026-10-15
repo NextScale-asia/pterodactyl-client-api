@@ -25,6 +25,7 @@ class UpsertEggVariableRequest extends ApplicationApiRequest
             'user_viewable' => 'required|boolean',
             'user_editable' => 'required|boolean',
             'rules' => 'nullable|string',
+            'expected_fingerprint' => 'sometimes|string|size:64',
         ];
     }
 }

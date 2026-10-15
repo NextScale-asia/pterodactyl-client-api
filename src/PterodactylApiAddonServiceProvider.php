@@ -7,6 +7,11 @@ use Illuminate\Support\ServiceProvider;
 class PterodactylApiAddonServiceProvider extends ServiceProvider
 {
     /**
+     * Reported by GET /api/application/addon/info. Keep in sync with the release tag.
+     */
+    public const VERSION = '2.3.2';
+
+    /**
      * Bootstrap any package services.
      */
     public function boot(): void

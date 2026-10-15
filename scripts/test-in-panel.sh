@@ -8,7 +8,9 @@
 # Needs only Docker. The panel source is mounted read-only and copied inside the
 # container (bind-mount I/O on Windows is too slow for composer); it is never modified.
 # Env: PHP_VERSION (default 8.3), DB_IMAGE (default mariadb:11), KEEP=1 keeps the
-# database container and network for debugging.
+# database container and network for debugging. ROUTE_CACHE=1 runs `php artisan optimize`
+# (route + config cache, like a production addon update) with PTERO_CLIENT_API_EGG_WRITE=true
+# before phpunit; RouteCacheTest only runs its checks in that mode.
 set -euo pipefail
 
 PANEL_SRC="${1:?usage: $0 <path-to-panel-source> [phpunit args...]}"
@@ -54,7 +56,7 @@ docker run --rm --network "$ID" \
   -v "$(hostpath "$PANEL_SRC"):/src:ro" \
   -v "$(hostpath "$ADDON_DIR"):/addon:ro" \
   -v pca-test-composer-cache:/root/.composer/cache \
-  -e DB_HOST="$ID-db" -e DB_USERNAME=root -e COMPOSER_PROCESS_TIMEOUT=0 \
+  -e DB_HOST="$ID-db" -e DB_USERNAME=root -e COMPOSER_PROCESS_TIMEOUT=0 -e ROUTE_CACHE="${ROUTE_CACHE:-}" \
   "pca-test-php:$PHP_VERSION" bash -euo pipefail -c '
     mkdir /panel && cd /panel
     tar -C /src --exclude=./node_modules --exclude=./vendor -cf - . | tar -xf -
@@ -69,10 +71,21 @@ docker run --rm --network "$ID" \
       sleep 2
     done
 
+    if [[ "${ROUTE_CACHE:-}" == 1 ]]; then
+      PTERO_CLIENT_API_EGG_WRITE=true php artisan optimize
+      php artisan route:list --path=api/application/eggs
+    fi
+
     vendor/bin/phpunit \
       tests/Integration/Api/Application/Users/UserApiKeyControllerTest.php \
       tests/Integration/Api/Application/Users/FreeAllocationControllerTest.php \
       tests/Integration/Api/Application/Users/ServerTransferControllerTest.php \
       tests/Integration/Api/Application/Users/EggVariableControllerTest.php \
-      tests/Integration/Api/Application/Users/DatabaseHostControllerTest.php "$@"
+      tests/Integration/Api/Application/Users/DatabaseHostControllerTest.php \
+      tests/Integration/Api/Application/Users/EggWriteGateTest.php \
+      tests/Integration/Api/Application/Users/EggShareControllerTest.php \
+      tests/Integration/Api/Application/Users/EggControllerTest.php \
+      tests/Integration/Api/Application/Users/NestControllerTest.php \
+      tests/Integration/Api/Application/Users/EggHardeningTest.php \
+      tests/Integration/Api/Application/Users/RouteCacheTest.php "$@"
   ' bash "$@"
